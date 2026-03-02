@@ -9,11 +9,12 @@
 
 static constexpr int BROADCAST_INTERVAL = 5;
 
-Router::Router(std::string port, std::string name, const std::map<std::string, NeighborInfo>& neighbours) : is_online(false),
-    current_sockets(),
-    readFds() {
+Router::Router(std::string port, std::string name, const std::map<std::string, NeighborInfo> &neighbours) {
     this->port = std::move(port);
     this->name = std::move(name);
+    FD_ZERO(&current_sockets);
+    FD_ZERO(&readFds);
+    is_online = false;
     for (const auto &[router_name, info]: neighbours) {
         Connection connection = {info.port, -1};
         this->neighbors.insert_or_assign(router_name, connection);

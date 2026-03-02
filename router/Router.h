@@ -18,7 +18,7 @@ private:
     std::string port;
     std::map<std::string, int> routing_table;
     int host_socket = -1;
-    fd_set current_sockets, readFds;
+    fd_set current_sockets{}, readFds{};
 
     addrinfo *hostAddressInfo = nullptr;
 
