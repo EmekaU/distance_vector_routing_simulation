@@ -8,4 +8,6 @@ add_executable(distance_vector_routing_simul main.cpp
         router/Router.h
         router/helper.cpp
         router/helper.h
+        ControlPane/RouterManager.h
+        ControlPane/RouterManager.cpp
 )

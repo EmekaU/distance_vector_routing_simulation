@@ -1,61 +1,69 @@
-//
-// Created by Umeozo Emeka on 2026-01-01.
-//
-
 #ifndef DISTANCE_VECTOR_ROUTING_SIMUL_ROUTER_H
 #define DISTANCE_VECTOR_ROUTING_SIMUL_ROUTER_H
 #include <string>
-#include <sys/types.h>
-#include <sys/socket.h>
+#include <map>
 #include <netdb.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <ctype.h>
-#include <stdbool.h>
-#include <unistd.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <arpa/inet.h>
-#include <sys/time.h>
-#include <errno.h>
 #include "helper.h"
+
 class Router {
 public:
-    std::string name;
-    int id;
-    std::string address;
-    int port;
+    bool is_online;
+    Router(std::string port, std::string name, const std::map<std::string, NeighborInfo>& neighbours);
+    void InitRouter();
+    void Run();
 
-    void InitRouter(const char* port);
 private:
-    static int GetAddressInfo(const char* port, struct addrinfo* hints, struct addrinfo** addressInfo);
-    void set_router_to_default(router* r);
-    void print(Router* r);
-    void printRoutingTable();
-    int get_table_row_index(unsigned char c);
-    bool is_router_name_valid(unsigned char c);
-    void init_routing_table();
-    void update_routing_table(unsigned char src, unsigned char dest, int cost);
-    void run_router();
-    void connect_to_neighbours();
-    bool is_connected(int socket);
-    long send_heartbeat(int socket);
-    void print_next_hop_for_each_known_router();
-    unsigned char get_next_hop(unsigned char router);
-    long greet_neighbour(int socket);
+    std::string name;
+    std::string address;
+    std::string port;
+    std::map<std::string, int> routing_table;
+    int host_socket = -1;
+    fd_set current_sockets, readFds;
+
+    addrinfo *hostAddressInfo = nullptr;
+
+    struct Connection {
+        std::string port;
+        int socket = -1;
+    };
+
+    std::map<std::string, Connection> neighbors;
+
+    using RouteAdvertisement = struct {
+        std::string name;
+        std::map<std::string, int> route_costs;
+    };
+    using RouterInfo = struct {
+        std::string name;
+        std::string port;
+        int cost;
+    };
+
+    static int GetAddressInfo(const char *port, addrinfo *hints, addrinfo **addressInfo);
+    static int GetSocket(int addrinfo_status, addrinfo *addr_info_list, bool isHost);
+
+    [[nodiscard]] int AcceptNewConnection() const;
+
+    void GreetNeighbours();
+    void BroadcastRoutingTable();
+
+    void PrintRoutingTable() const;
+
+    int TryReceivePacket(int socket, bool isGreet);
+
+    void UpdateRoutingTable(const RouteAdvertisement *route_ad);
+
+    long SendRouteAd(int socket) const;
+
+    long SendInfo(int socket, int cost) const;
+
+    static std::string Serialize(const RouteAdvertisement &route_ad);
+
+    static std::string Serialize(const RouterInfo &router_info);
+
+    static RouterInfo DeserializeToRouterInfo(const char *data);
+
+    static RouteAdvertisement DeserializeToRouteAd(const char *data);
 };
-
-#define MAX_NEIGHBOURS 25
-typedef enum message_type{
-    greet = 0, ack = 1, info = 2, heartbeat = 3
-}message_type;
-
-typedef struct message{
-    message_type type;
-    unsigned char dest;
-    unsigned char src;
-    int cost;
-}message;
 
 #endif //DISTANCE_VECTOR_ROUTING_SIMUL_ROUTER_H
