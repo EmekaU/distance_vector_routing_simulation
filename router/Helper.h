@@ -12,5 +12,6 @@ struct NeighborInfo {
     std::string port;
     int cost;
 };
-
+#include <mutex>
+extern std::mutex cout_mutex;
 #endif //DISTANCE_VECTOR_ROUTING_SIMUL_HELPER_H

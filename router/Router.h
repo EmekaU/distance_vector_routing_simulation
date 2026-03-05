@@ -3,7 +3,7 @@
 #include <string>
 #include <map>
 #include <netdb.h>
-#include "helper.h"
+#include "Helper.h"
 
 class Router {
 public:
@@ -16,7 +16,11 @@ private:
     std::string name;
     std::string address;
     std::string port;
-    std::map<std::string, int> routing_table;
+    struct RouteEntry {
+        int cost;
+        std::string next_hop;
+    };
+    std::map<std::string, RouteEntry> routing_table;
     int host_socket = -1;
     fd_set current_sockets{}, readFds{};
 
@@ -31,13 +35,14 @@ private:
 
     using RouteAdvertisement = struct {
         std::string name;
-        std::map<std::string, int> route_costs;
+        std::map<std::string, RouteEntry> route_costs;
     };
     using RouterInfo = struct {
         std::string name;
         std::string port;
         int cost;
     };
+
 
     static int GetAddressInfo(const char *port, addrinfo *hints, addrinfo **addressInfo);
     static int GetSocket(int addrinfo_status, addrinfo *addr_info_list, bool isHost);
@@ -53,9 +58,9 @@ private:
 
     void UpdateRoutingTable(const RouteAdvertisement *route_ad);
 
-    long SendRouteAd(int socket) const;
+    [[nodiscard]] long SendRouteAd(int socket) const;
 
-    long SendInfo(int socket, int cost) const;
+    [[nodiscard]] long SendInfo(int socket, int cost) const;
 
     static std::string Serialize(const RouteAdvertisement &route_ad);
 

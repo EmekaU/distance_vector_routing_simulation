@@ -3,7 +3,7 @@
 #include <ranges>
 #include <sstream>
 #include <utility>
-#include "helper.h"
+#include "Helper.h"
 #include <unistd.h>
 #include <sys/time.h>
 
@@ -18,8 +18,9 @@ Router::Router(std::string port, std::string name, const std::map<std::string, N
     for (const auto &[router_name, info]: neighbours) {
         Connection connection = {info.port, -1};
         this->neighbors.insert_or_assign(router_name, connection);
-        this->routing_table.insert_or_assign(router_name, info.cost);
+        this->routing_table.insert_or_assign(router_name, RouteEntry{info.cost, router_name});
     }
+    this->routing_table.insert(std::pair(this->name, RouteEntry{.cost = 0, .next_hop = this->name}) );
 }
 
 void Router::GreetNeighbours() {
@@ -43,7 +44,7 @@ void Router::GreetNeighbours() {
             continue;
         }
 
-        if (SendInfo(sock, routing_table.at(neighborName)) > 0) {
+        if (SendInfo(sock, routing_table.at(neighborName).cost) > 0) {
             neighborConn.socket = sock;
             FD_SET(sock, &current_sockets);
         } else {
@@ -70,11 +71,18 @@ void Router::BroadcastRoutingTable() {
 }
 
 void Router::PrintRoutingTable() const {
-    std::cout << "=== Router " << name << " Routing Table ===" << std::endl;
-    for (const auto &[dest, cost]: routing_table) {
-        std::cout << "  " << dest << " : " << cost << std::endl;
+    std::lock_guard<std::mutex> lock(cout_mutex);
+    std::cout << "\n+" << std::string(30, '-') << "+" << std::endl;
+    std::cout << "| Router " << name << std::string(21 - name.length(), ' ') << "|" << std::endl;
+    std::cout << "+" << std::string(14, '-') << "+" << std::string(15, '-') << "+" << std::endl;
+    std::cout << "| Destination  | Cost          |" << std::endl;
+    std::cout << "+" << std::string(14, '-') << "+" << std::string(15, '-') << "+" << std::endl;
+    for (const auto &[dest, routeEntry]: routing_table) {
+        std::cout << "| " << dest << std::string(13 - dest.length(), ' ')
+                  << "| " << routeEntry.cost << std::string(14 - std::to_string(routeEntry.cost).length(), ' ')
+                  << "|" << std::endl;
     }
-    std::cout << "================================" << std::endl;
+    std::cout << "+" << std::string(14, '-') << "+" << std::string(15, '-') << "+" << std::endl;
 }
 
 void Router::Run() {
@@ -235,13 +243,14 @@ int Router::TryReceivePacket(const int socket, const bool isGreet) {
 }
 
 void Router::UpdateRoutingTable(const RouteAdvertisement *route_ad) {
-    const int cost_to_neighbour = routing_table[route_ad->name];
-    for (const auto &[foreignRouterName, foreignRouterCost]: route_ad->route_costs) {
-        int current_cost = std::numeric_limits<int>::max();
-        if (routing_table.contains(foreignRouterName)) {
-            current_cost = routing_table[foreignRouterName];
+    const int cost_to_neighbour = routing_table[route_ad->name].cost;
+    for (const auto &[foreignRouterName, foreignRouterInfo]: route_ad->route_costs) {
+        int new_cost = cost_to_neighbour + foreignRouterInfo.cost;
+        if (!routing_table.contains(foreignRouterName)) {
+            routing_table[foreignRouterName] = RouteEntry{new_cost, route_ad->name};
+        } else if (new_cost < routing_table[foreignRouterName].cost) {
+            routing_table[foreignRouterName] = RouteEntry{new_cost, route_ad->name};
         }
-        routing_table[foreignRouterName] = std::min(current_cost, cost_to_neighbour + foreignRouterCost);
     }
 }
 
@@ -260,8 +269,8 @@ long Router::SendRouteAd(int socket) const {
 std::string Router::Serialize(const RouteAdvertisement &route_ad) {
     std::string body = route_ad.name + delimiter;
     std::string route;
-    for (const auto &[name, cost]: route_ad.route_costs) {
-        route.append(name + pair_delimiter + std::to_string(cost) + comma_delimiter);
+    for (const auto &[name, routeInfo]: route_ad.route_costs) {
+        route.append(name + pair_delimiter + std::to_string(routeInfo.cost) + comma_delimiter);
     }
     if (!route.empty()) {
         route.pop_back();
@@ -293,7 +302,7 @@ Router::RouteAdvertisement Router::DeserializeToRouteAd(const char *data) {
     std::getline(iss, name, delimiter);
     std::getline(iss, routes_str, delimiter);
 
-    std::map<std::string, int> route_costs;
+    std::map<std::string, RouteEntry> route_costs;
     std::istringstream routes_iss(routes_str);
     std::string entry;
     while (std::getline(routes_iss, entry, comma_delimiter)) {
@@ -301,7 +310,7 @@ Router::RouteAdvertisement Router::DeserializeToRouteAd(const char *data) {
         std::string dest, cost_str;
         std::getline(entry_iss, dest, pair_delimiter);
         std::getline(entry_iss, cost_str, pair_delimiter);
-        route_costs[dest] = std::stoi(cost_str);
+        route_costs[dest].cost = std::stoi(cost_str);
     }
 
     return {name, route_costs};
